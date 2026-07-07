@@ -1,0 +1,47 @@
+# Sample Riffle config.
+#
+# Copy this file to the location Riffle expects by default --
+# %APPDATA%\Riffle\config.toml on Windows -- or pass a custom path with
+# `riffle --config path\to\config.toml <command>`.
+
+[riffle]
+
+# Required: folders to recursively scan for .jpg/.jpeg files.
+root_folders = [
+    "D:/Photos/Family",
+    "D:/Photos/Trips",
+]
+
+# Path to the exiftool executable. Defaults to "exiftool" (must be on PATH).
+# Uncomment and set this if it's not on PATH -- e.g. after installing via
+# `winget install --id=OliverBetz.ExifTool -e`.
+# exiftool_path = "C:/Users/you/AppData/Local/Programs/ExifTool/ExifTool.exe"
+
+# Friendly name of the Chromecast to cast to. If unset, Riffle casts to the
+# first Chromecast it discovers on the network.
+# chromecast_name = "Living Room TV"
+
+# Seconds each photo stays on screen before advancing. Default: 30
+# interval_seconds = 30
+
+# Local HTTP server settings used to serve resized/captioned photos to the
+# Chromecast. Default host binds all interfaces so the Chromecast can reach it.
+# http_host = "0.0.0.0"
+# http_port = 8420
+
+# Max dimensions photos are resized to before serving (Chromecast 2nd gen
+# has 512MB RAM -- never serve full-res). Default: 1920x1080
+# max_width = 1920
+# max_height = 1080
+
+# Where the SQLite database and image cache are stored. Defaults to the
+# platform data dir (%LOCALAPPDATA%\Riffle on Windows).
+# data_dir = "D:/RiffleData"
+
+# Number of files per exiftool batch call during scan. Default: 400
+# exiftool_batch_size = 400
+
+# If true, reshuffle the whole order each time the slideshow wraps back to
+# the start of a cycle, instead of preserving the original shuffled order.
+# Default: false
+# reshuffle_on_wrap = false

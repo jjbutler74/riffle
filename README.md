@@ -23,22 +23,19 @@ Casts a photo slideshow from local folders to a Chromecast (2nd gen).
 
 3. **Config file** — Riffle looks for `config.toml` in the platform config
    directory (`%APPDATA%\Riffle\config.toml` by default) unless you pass
-   `--config path\to\config.toml`. Minimal example:
+   `--config path\to\config.toml`. Copy [`config.sample.toml`](config.sample.toml)
+   to that location and edit `root_folders`:
 
-   ```toml
-   [riffle]
-   root_folders = [
-       "D:/Photos/Family",
-       "D:/Photos/Trips",
-   ]
-   # exiftool_path = "C:/Users/you/AppData/Local/Programs/ExifTool/ExifTool.exe"
-   # chromecast_name = "Living Room TV"
-   # interval_seconds = 30
-   # http_port = 8420
+   ```powershell
+   mkdir "$env:APPDATA\Riffle" -Force
+   copy config.sample.toml "$env:APPDATA\Riffle\config.toml"
+   notepad "$env:APPDATA\Riffle\config.toml"
    ```
 
-   All other settings (`data_dir`, `http_host`, `max_width`/`max_height`,
-   `exiftool_batch_size`, `reshuffle_on_wrap`) have sensible defaults — see
+   All settings besides `root_folders` (`exiftool_path`, `chromecast_name`,
+   `interval_seconds`, `http_host`/`http_port`, `max_width`/`max_height`,
+   `data_dir`, `exiftool_batch_size`, `reshuffle_on_wrap`) are optional and
+   have sensible defaults — see the comments in `config.sample.toml` or
    `riffle/config.py`.
 
 4. **Windows long paths**: if any of your photo paths might exceed 260
