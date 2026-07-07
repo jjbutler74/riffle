@@ -37,7 +37,7 @@ def run_play_loop(
 
             url = f"{base_url}/photo/{photo.id}"
             try:
-                ok = controller.display_photo(url)
+                ok = controller.display_photo(url, confirm_timeout=config.cast_confirm_timeout_seconds)
             except CastConnectError:
                 logger.warning("Not connected to Chromecast")
                 ok = False

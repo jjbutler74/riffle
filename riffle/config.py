@@ -30,6 +30,7 @@ class Config:
     max_height: int = 1080
     exiftool_batch_size: int = 400
     reshuffle_on_wrap: bool = False
+    cast_confirm_timeout_seconds: float = 25.0
 
     @property
     def max_dimension(self) -> tuple[int, int]:
@@ -88,6 +89,8 @@ def load_config(path: "Path | str | None" = None) -> Config:
         kwargs["exiftool_batch_size"] = section["exiftool_batch_size"]
     if "reshuffle_on_wrap" in section:
         kwargs["reshuffle_on_wrap"] = section["reshuffle_on_wrap"]
+    if "cast_confirm_timeout_seconds" in section:
+        kwargs["cast_confirm_timeout_seconds"] = section["cast_confirm_timeout_seconds"]
 
     config = Config(**kwargs)
     config.ensure_dirs()

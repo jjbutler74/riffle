@@ -45,3 +45,10 @@ root_folders = [
 # the start of a cycle, instead of preserving the original shuffled order.
 # Default: false
 # reshuffle_on_wrap = false
+
+# Seconds to wait for the Chromecast to confirm it's displaying a photo
+# before treating the attempt as failed and retrying. Older devices (e.g.
+# Chromecast 2nd gen) can take a long time to cold-launch the Default Media
+# Receiver app on the very first cast, so if you see "Timed out waiting for
+# Chromecast media status" in the logs, try raising this. Default: 25
+# cast_confirm_timeout_seconds = 25

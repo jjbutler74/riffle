@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 
 import pychromecast
 import pychromecast.discovery
@@ -89,19 +90,27 @@ class CastController:
             return self._cast.socket_client.host
         return None
 
-    def display_photo(self, url: str, confirm_timeout: float = 10.0) -> bool:
+    def display_photo(self, url: str, confirm_timeout: float = 25.0) -> bool:
         if self._cast is None or self._listener is None:
             raise CastConnectError("Not connected to a Chromecast")
 
         self._listener.event.clear()
+        t0 = time.monotonic()
         try:
             self._cast.media_controller.play_media(url, "image/jpeg", stream_type="LIVE")
         except (pychromecast.error.PyChromecastError, OSError) as exc:
-            logger.warning("play_media failed: %s", exc)
+            logger.warning("play_media failed after %.1fs: %s", time.monotonic() - t0, exc)
             return False
+        t1 = time.monotonic()
+        logger.debug("play_media() call itself took %.1fs", t1 - t0)
 
         if not self._listener.event.wait(confirm_timeout):
-            logger.warning("Timed out waiting for Chromecast to confirm media status")
+            logger.warning(
+                "Timed out waiting for Chromecast media status (play_media call took "
+                "%.1fs, then waited %.1fs for a status update)",
+                t1 - t0,
+                time.monotonic() - t1,
+            )
             return False
 
         status = self._listener.latest_status
