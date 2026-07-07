@@ -66,6 +66,30 @@ class CastController:
         cast.media_controller.register_status_listener(self._listener)
         logger.info("Connected to Chromecast %r", cast.name)
 
+        try:
+            self._ensure_media_receiver()
+        except (pychromecast.error.PyChromecastError, OSError) as exc:
+            self._teardown()
+            raise CastConnectError(f"Failed to launch Default Media Receiver: {exc}") from exc
+
+    def _ensure_media_receiver(self) -> None:
+        """Launch the Default Media Receiver if some other app (YouTube,
+        Spotify, whatever was last cast) is currently active. play_media()
+        only auto-launches a receiver when the device is fully idle -- if
+        another app is merely resident/in standby, play_media() silently
+        sends LOAD to *that* app's session instead, which just ignores it.
+        Called on connect() and again before every display_photo() so a
+        mid-session takeover by another app is self-healed on the next tick.
+        """
+        assert self._cast is not None
+        if self._cast.app_id == pychromecast.APP_MEDIA_RECEIVER:
+            return
+        logger.info(
+            "Chromecast is running %r, launching Default Media Receiver instead",
+            self._cast.app_display_name or self._cast.app_id,
+        )
+        self._cast.start_app(pychromecast.APP_MEDIA_RECEIVER)
+
     def disconnect(self) -> None:
         self._teardown()
 
@@ -94,6 +118,12 @@ class CastController:
         if self._cast is None or self._listener is None:
             raise CastConnectError("Not connected to a Chromecast")
 
+        try:
+            self._ensure_media_receiver()
+        except (pychromecast.error.PyChromecastError, OSError) as exc:
+            logger.warning("Failed to (re)launch Default Media Receiver: %s", exc)
+            return False
+
         self._listener.event.clear()
         t0 = time.monotonic()
         try:
@@ -119,4 +149,11 @@ class CastController:
         if status.player_is_playing or status.player_is_paused:
             return True
         idle_reason = getattr(status, "idle_reason", None)
-        return bool(status.player_is_idle) and idle_reason != "ERROR"
+        success = bool(status.player_is_idle) and idle_reason != "ERROR"
+        if not success:
+            logger.warning(
+                "Chromecast reported a non-success status: player_state=%r idle_reason=%r",
+                getattr(status, "player_state", None),
+                idle_reason,
+            )
+        return success
