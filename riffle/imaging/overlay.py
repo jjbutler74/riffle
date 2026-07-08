@@ -118,10 +118,11 @@ def composite_overlay(image: Image.Image, overlay: OverlayText) -> Image.Image:
     base = image.convert("RGBA")
     width, height = base.size
     margin = max(int(height * 0.02), 8)
+    bottom_margin = max(int(height * 0.035), 14)
     max_text_width = max(width - 2 * margin, 1)
     max_bar_height = height * 0.35
 
-    date_size = _clamp(height * 0.020, 10, 40)
+    date_size = _clamp(height * 0.025, 13, 50)
     primary_size = _clamp(height * 0.035, 14, 64)
     secondary_size = _clamp(height * 0.024, 12, 48)
 
@@ -145,21 +146,23 @@ def composite_overlay(image: Image.Image, overlay: OverlayText) -> Image.Image:
         line_spacing = max(int(date_size * 0.3), 2)
         block_spacing = max(int(date_size * 0.5), 4)
 
+        # Title, then description, then date -- date sits at the bottom of
+        # the stack now, so it gets the larger bottom_margin breathing room.
         blocks = [
-            (date_lines, date_font, _TEXT_COLOR_PRIMARY),
             (primary_lines, primary_font, _TEXT_COLOR_PRIMARY),
             (secondary_lines, secondary_font, _TEXT_COLOR_SECONDARY),
+            (date_lines, date_font, _TEXT_COLOR_PRIMARY),
         ]
         active_blocks = [b for b in blocks if b[0]]
 
         content_height = sum(_block_height(lines, font, line_spacing) for lines, font, _ in active_blocks)
         content_height += block_spacing * max(len(active_blocks) - 1, 0)
-        total_height = 2 * margin + content_height
+        total_height = margin + content_height + bottom_margin
 
-        min_reached = date_size <= 10 and primary_size <= 14 and secondary_size <= 12
+        min_reached = date_size <= 13 and primary_size <= 14 and secondary_size <= 12
         if total_height <= max_bar_height or min_reached:
             break
-        date_size = max(10, int(date_size * 0.85))
+        date_size = max(13, int(date_size * 0.85))
         primary_size = max(14, int(primary_size * 0.85))
         secondary_size = max(12, int(secondary_size * 0.85))
 
