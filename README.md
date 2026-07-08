@@ -22,14 +22,15 @@ Casts a photo slideshow from local folders to a Chromecast (2nd gen).
    If it's not on PATH, set `exiftool_path` in your config to its full path.
 
 3. **Config file** — Riffle looks for `config.toml` in the platform config
-   directory (`%APPDATA%\Riffle\config.toml` by default) unless you pass
-   `--config path\to\config.toml`. Copy [`config.sample.toml`](config.sample.toml)
-   to that location and edit `root_folders`:
+   directory (`%LOCALAPPDATA%\Riffle\config.toml` by default -- note this is
+   *Local* AppData, not *Roaming*) unless you pass `--config path\to\config.toml`.
+   Copy [`config.sample.toml`](config.sample.toml) to that location and edit
+   `root_folders`:
 
    ```powershell
-   mkdir "$env:APPDATA\Riffle" -Force
-   copy config.sample.toml "$env:APPDATA\Riffle\config.toml"
-   notepad "$env:APPDATA\Riffle\config.toml"
+   mkdir "$env:LOCALAPPDATA\Riffle" -Force
+   copy config.sample.toml "$env:LOCALAPPDATA\Riffle\config.toml"
+   notepad "$env:LOCALAPPDATA\Riffle\config.toml"
    ```
 
    All settings besides `root_folders` (`exiftool_path`, `chromecast_name`,
