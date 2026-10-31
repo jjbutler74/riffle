@@ -21,6 +21,12 @@ root_folders = [
 # first Chromecast it discovers on the network.
 # chromecast_name = "Living Room TV"
 
+# IP address of the Chromecast, queried directly in addition to the normal
+# network search. Set this if `riffle play` says "No Chromecast found" even
+# though the TV is on (e.g. a PC with several network adapters). Giving the
+# device a reserved IP in your router keeps this from going stale.
+# chromecast_host = "192.168.1.140"
+
 # Seconds each photo stays on screen before advancing. Default: 30
 # interval_seconds = 30
 
@@ -52,3 +58,22 @@ root_folders = [
 # Receiver app on the very first cast, so if you see "Timed out waiting for
 # Chromecast media status" in the logs, try raising this. Default: 25
 # cast_confirm_timeout_seconds = 25
+
+# Each photo's caption shows whose camera it came from, taken from a
+# year-suffixed folder name: "JenniferPhone2023" or "Sabrina2024" -> the
+# name before "Phone"/the year. List folder-derived names that aren't people
+# here to keep them off the caption (case-insensitive). Default: []
+# hidden_folder_names = ["Other", "SLR", "Screenshot"]
+
+# If true, only photos with a description (from the photo's own metadata or
+# a Google Takeout .json sidecar) are shown; the rest are skipped.
+# Default: true
+# only_with_description = true
+
+# Caption extras -- each can be turned off. Title/description and the date
+# itself always show. Defaults: everything on except show_time.
+# show_location = true      # nearest town from the photo's GPS, e.g. "Kaikoura, Canterbury"
+# show_folder_name = true   # whose phone, from the folder name, e.g. "Jennifer"
+# show_weekday = true       # "Monday, February 6, 2023"
+# show_time = false         # "..., 2:10 PM"
+# show_years_ago = true     # "· 3 years ago"

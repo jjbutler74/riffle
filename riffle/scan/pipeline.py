@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 from riffle.config import Config
+from riffle.db import METADATA_VERSION
 from riffle.scan.exif import ExifBatchReader, ExifResult
+from riffle.scan.geocode import reverse_geocode
 from riffle.scan.hashing import compute_content_hash
 from riffle.scan.sidecar import find_sidecar, read_sidecar_description
 from riffle.scan.walker import DiscoveredFile, walk_roots
@@ -22,6 +24,7 @@ class ScanReport:
     updated: int = 0
     missing_marked: int = 0
     revived: int = 0
+    metadata_refreshed: int = 0
     unchanged: int = 0
     errors: list[tuple[Path, str]] = field(default_factory=list)
 
@@ -65,7 +68,7 @@ def run_scan(conn: sqlite3.Connection, config: Config) -> ScanReport:
     }
 
     existing_rows = conn.execute(
-        "SELECT path, size, mtime, missing_at FROM photos"
+        "SELECT path, size, mtime, missing_at, content_hash, meta_version FROM photos"
     ).fetchall()
     existing = {row["path"]: row for row in existing_rows}
 
@@ -78,14 +81,21 @@ def run_scan(conn: sqlite3.Connection, config: Config) -> ScanReport:
             report.missing_marked += 1
 
     # Files present now that need (re)reading: new, or changed size/mtime,
-    # or previously marked missing and now back.
+    # or scanned before the current metadata version, or previously marked
+    # missing and now back.
     to_read: list[Path] = []
+    # Unchanged files whose metadata is being re-read: their stored hash is
+    # still valid, so skip re-hashing (the expensive part on a slow drive).
+    known_hashes: dict[Path, str] = {}
     for path_str, disc in discovered.items():
         row = existing.get(path_str)
         if row is None:
             to_read.append(disc.path)
         elif row["size"] != disc.size or row["mtime"] != disc.mtime:
             to_read.append(disc.path)
+        elif row["meta_version"] < METADATA_VERSION:
+            to_read.append(disc.path)
+            known_hashes[disc.path] = row["content_hash"]
         elif row["missing_at"] is not None:
             # Unchanged content, but reappeared on disk after being missing.
             conn.execute(
@@ -103,18 +113,34 @@ def run_scan(conn: sqlite3.Connection, config: Config) -> ScanReport:
         ) as reader:
             exif_results, exif_errors = reader.read_batch(to_read)
 
+        gps_paths = [
+            path
+            for path in to_read
+            if path in exif_results and exif_results[path].latitude is not None
+        ]
+        places = reverse_geocode(
+            [(exif_results[p].latitude, exif_results[p].longitude) for p in gps_paths]
+        )
+        locations = dict(zip(gps_paths, places))
+
         for path in to_read:
             disc = discovered[str(path)]
             exif_result = exif_results.get(path)
             if exif_result is None:
                 report.errors.append((path, exif_errors.get(path, "unknown exiftool error")))
+                if path in known_hashes:
+                    # Only refreshing metadata: keep the row as it was rather than
+                    # blanking its date/title; it stays due for a re-read next time.
+                    continue
                 exif_result = ExifResult(title=None, description=None, date_original=None)
 
-            try:
-                content_hash = compute_content_hash(path)
-            except OSError as exc:
-                report.errors.append((path, f"failed to hash file: {exc}"))
-                continue
+            content_hash = known_hashes.get(path)
+            if content_hash is None:
+                try:
+                    content_hash = compute_content_hash(path)
+                except OSError as exc:
+                    report.errors.append((path, f"failed to hash file: {exc}"))
+                    continue
 
             date_display, date_epoch, date_source = _resolve_date(
                 exif_result.date_original, disc.mtime
@@ -127,8 +153,9 @@ def run_scan(conn: sqlite3.Connection, config: Config) -> ScanReport:
                 INSERT INTO photos (
                     path, root_folder, size, mtime, content_hash,
                     date_display, date_epoch, date_source, title, description,
+                    latitude, longitude, location, meta_version,
                     missing_at, first_seen_at, last_scanned_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 ON CONFLICT(path) DO UPDATE SET
                     root_folder=excluded.root_folder,
                     size=excluded.size,
@@ -139,6 +166,10 @@ def run_scan(conn: sqlite3.Connection, config: Config) -> ScanReport:
                     date_source=excluded.date_source,
                     title=excluded.title,
                     description=excluded.description,
+                    latitude=excluded.latitude,
+                    longitude=excluded.longitude,
+                    location=excluded.location,
+                    meta_version=excluded.meta_version,
                     missing_at=NULL,
                     last_scanned_at=excluded.last_scanned_at
                 """,
@@ -153,12 +184,18 @@ def run_scan(conn: sqlite3.Connection, config: Config) -> ScanReport:
                     date_source,
                     exif_result.title,
                     description,
+                    exif_result.latitude,
+                    exif_result.longitude,
+                    locations.get(path),
+                    METADATA_VERSION,
                     now,
                     now,
                 ),
             )
             if is_new:
                 report.added += 1
+            elif path in known_hashes:
+                report.metadata_refreshed += 1
             else:
                 report.updated += 1
 

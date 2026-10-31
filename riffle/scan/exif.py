@@ -18,8 +18,16 @@ logger = logging.getLogger(__name__)
 _TITLE_TAGS = ("XMP:Title", "IPTC:ObjectName", "EXIF:XPTitle")
 _DESCRIPTION_TAGS = ("XMP:Description", "IPTC:Caption-Abstract", "EXIF:ImageDescription")
 _DATE_TAG = "EXIF:DateTimeOriginal"
+# Composite GPS tags already fold in the N/S and E/W refs; the "#" suffix asks
+# exiftool for the signed decimal value rather than a "40 deg 49' 58.52\" S" string.
+_LATITUDE_TAG = "Composite:GPSLatitude"
+_LONGITUDE_TAG = "Composite:GPSLongitude"
 
-_TAG_ARGS = [f"-{tag}" for tag in (*_TITLE_TAGS, *_DESCRIPTION_TAGS, _DATE_TAG)]
+_TAG_ARGS = [
+    *[f"-{tag}" for tag in (*_TITLE_TAGS, *_DESCRIPTION_TAGS, _DATE_TAG)],
+    f"-{_LATITUDE_TAG}#",
+    f"-{_LONGITUDE_TAG}#",
+]
 _REQUEST_ARGS = ["-G", "-fast2", "-charset", "filename=utf8", *_TAG_ARGS]
 
 
@@ -28,6 +36,8 @@ class ExifResult:
     title: str | None
     description: str | None
     date_original: str | None  # raw "YYYY:MM:DD HH:MM:SS" display string, or None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 def extract_title(tags: dict) -> str | None:
@@ -53,12 +63,28 @@ def extract_date_original(tags: dict) -> str | None:
     return None
 
 
+def extract_gps(tags: dict) -> tuple[float, float] | None:
+    lat = tags.get(_LATITUDE_TAG)
+    lon = tags.get(_LONGITUDE_TAG)
+    if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        return None
+    # Phones write 0,0 when they had no fix; that's the Gulf of Guinea, not a photo spot.
+    if lat == 0 and lon == 0:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return float(lat), float(lon)
+
+
 def tags_to_result(tags: dict) -> ExifResult:
     """Pure mapping from one exiftool -G1 -json row to an ExifResult."""
+    gps = extract_gps(tags)
     return ExifResult(
         title=extract_title(tags),
         description=extract_description(tags),
         date_original=extract_date_original(tags),
+        latitude=gps[0] if gps else None,
+        longitude=gps[1] if gps else None,
     )
 
 

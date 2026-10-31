@@ -30,8 +30,16 @@ class _StatusListener:
 
 
 class CastController:
-    def __init__(self, chromecast_name: str | None = None, discovery_timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        chromecast_name: str | None = None,
+        discovery_timeout: float = 10.0,
+        chromecast_host: str | None = None,
+    ) -> None:
         self._chromecast_name = chromecast_name
+        # Queried directly alongside mDNS discovery, for networks (or PCs with
+        # several adapters) where the mDNS multicast never reaches the device.
+        self._known_hosts = [chromecast_host] if chromecast_host else None
         self._discovery_timeout = discovery_timeout
         self._cast: pychromecast.Chromecast | None = None
         self._browser = None
@@ -44,9 +52,12 @@ class CastController:
             chromecasts, browser = pychromecast.get_listed_chromecasts(
                 friendly_names=[self._chromecast_name],
                 discovery_timeout=self._discovery_timeout,
+                known_hosts=self._known_hosts,
             )
         else:
-            chromecasts, browser = pychromecast.get_chromecasts(timeout=self._discovery_timeout)
+            chromecasts, browser = pychromecast.get_chromecasts(
+                timeout=self._discovery_timeout, known_hosts=self._known_hosts
+            )
 
         if not chromecasts:
             pychromecast.discovery.stop_discovery(browser)

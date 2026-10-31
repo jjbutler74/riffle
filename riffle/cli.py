@@ -28,6 +28,7 @@ def _load(args: argparse.Namespace) -> Config:
 def _print_scan_report(report: ScanReport) -> None:
     print(f"Added:     {report.added}")
     print(f"Updated:   {report.updated}")
+    print(f"Refreshed: {report.metadata_refreshed}")
     print(f"Missing:   {report.missing_marked}")
     print(f"Revived:   {report.revived}")
     print(f"Unchanged: {report.unchanged}")
@@ -113,12 +114,25 @@ def cmd_play(args: argparse.Namespace) -> int:
     conn = db.connect(config.db_path)
     db.init_schema(conn)
     has_photo = shuffle.get_photo_at_cursor(conn) is not None
+    has_eligible = shuffle.skip_to_eligible(
+        conn, config.only_with_description, config.reshuffle_on_wrap
+    )
     conn.close()
     if not has_photo:
         print("No photos to display -- run 'riffle scan' first.", file=sys.stderr)
         return 1
+    if not has_eligible:
+        print(
+            "No photos to show -- none have a description (or all are marked "
+            "'delete'). Set only_with_description = false in the config to show "
+            "all photos.",
+            file=sys.stderr,
+        )
+        return 1
 
-    controller = CastController(chromecast_name=config.chromecast_name)
+    controller = CastController(
+        chromecast_name=config.chromecast_name, chromecast_host=config.chromecast_host
+    )
     try:
         controller.connect()
     except CastConnectError as exc:

@@ -29,6 +29,15 @@ def run_play_loop(
     consecutive_failures = 0
     try:
         while not stop_event.is_set():
+            if not shuffle.skip_to_eligible(
+                conn, config.only_with_description, config.reshuffle_on_wrap
+            ):
+                logger.warning(
+                    "No photos to show -- none have a description (or all are marked "
+                    "'delete'); set only_with_description = false to show all photos"
+                )
+                stop_event.wait(config.interval_seconds)
+                continue
             photo = shuffle.get_photo_at_cursor(conn)
             if photo is None:
                 logger.warning("No photo at cursor -- run 'riffle scan' first")

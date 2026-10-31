@@ -93,6 +93,9 @@ def reconcile_after_scan(conn: sqlite3.Connection, rng: random.Random | None = N
         ]
 
         if new_ids:
+            # Shuffle the new photos themselves too -- random slots alone keep
+            # them in id (i.e. folder/filename) order relative to each other.
+            rng.shuffle(new_ids)
             remainder = [
                 row["photo_id"]
                 for row in conn.execute(
@@ -130,6 +133,40 @@ def _reshuffle_all(conn: sqlite3.Connection, rng: random.Random) -> None:
         "INSERT INTO shuffle_order(position, photo_id) VALUES (?, ?)",
         list(enumerate(ids)),
     )
+
+
+def skip_to_eligible(
+    conn: sqlite3.Connection, require_description: bool, reshuffle_on_wrap: bool = False
+) -> bool:
+    """Move the cursor forward to the next photo worth showing, wrapping to
+    the start of the order (and reshuffling, if configured) like
+    advance_cursor does. Photos whose description mentions "delete" (notes
+    like "delete please") are always skipped; with require_description, so
+    are photos with no description. Photos skipped over count as seen for
+    this cycle. Returns False, leaving the cursor alone, if none qualify.
+    """
+    has_description = "TRIM(COALESCE(p.description, '')) != ''" if require_description else "1"
+    # LIKE is case-insensitive for ASCII in SQLite, so this catches "Delete" too.
+    query = f"""
+        SELECT MIN(so.position) AS position
+        FROM shuffle_order so
+        JOIN photos p ON p.id = so.photo_id
+        WHERE so.position >= ?
+          AND {has_description}
+          AND COALESCE(p.description, '') NOT LIKE '%delete%'
+    """
+    cursor = int(get_state(conn, "cursor", "0"))
+    position = conn.execute(query, (cursor,)).fetchone()["position"]
+    if position is None:
+        if conn.execute(query, (0,)).fetchone()["position"] is None:
+            return False
+        if reshuffle_on_wrap:
+            _reshuffle_all(conn, random.Random())
+        position = conn.execute(query, (0,)).fetchone()["position"]
+    if position != cursor:
+        set_state(conn, "cursor", str(position))
+    conn.commit()
+    return True
 
 
 def get_photo_at_cursor(conn: sqlite3.Connection) -> PhotoRow | None:

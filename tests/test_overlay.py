@@ -49,3 +49,16 @@ def test_blank_strings_treated_as_absent():
     result = resolve_overlay_text("Jan 1, 2020", "   ", "")
     assert result.primary is None
     assert result.secondary is None
+
+
+def test_caption_wraps_between_segments_not_inside_them():
+    from riffle.imaging.overlay import _load_font, _wrap_segments
+
+    font = _load_font(27)
+    text = "Tuesday, January 3, 2023, 9:17 PM · 3 years ago"
+    narrow = int(font.getlength("Tuesday, January 3, 2023, 9:17 PM")) + 5
+    assert _wrap_segments(text, font, narrow, max_lines=2) == [
+        "Tuesday, January 3, 2023, 9:17 PM",
+        "3 years ago",
+    ]
+    assert _wrap_segments(text, font, 10_000, max_lines=2) == [text]

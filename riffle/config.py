@@ -25,12 +25,24 @@ class Config:
     http_port: int = 8420
     interval_seconds: int = 30
     chromecast_name: str | None = None
+    chromecast_host: str | None = None
     data_dir: Path = field(default_factory=default_data_dir)
     max_width: int = 1920
     max_height: int = 1080
     exiftool_batch_size: int = 400
     reshuffle_on_wrap: bool = False
     cast_confirm_timeout_seconds: float = 25.0
+    # Folder-derived names (e.g. "Screenshot" from Screenshot2023) not to show
+    # as whose camera a photo came from. Case-insensitive.
+    hidden_folder_names: list[str] = field(default_factory=list)
+    # Only show photos that have a description (EXIF/XMP/IPTC or Takeout sidecar).
+    only_with_description: bool = True
+    # Which extras the caption shows (title/description and date always show).
+    show_location: bool = True
+    show_folder_name: bool = True
+    show_weekday: bool = True
+    show_time: bool = False
+    show_years_ago: bool = True
 
     @property
     def max_dimension(self) -> tuple[int, int]:
@@ -79,6 +91,8 @@ def load_config(path: "Path | str | None" = None) -> Config:
         kwargs["interval_seconds"] = section["interval_seconds"]
     if "chromecast_name" in section:
         kwargs["chromecast_name"] = section["chromecast_name"]
+    if "chromecast_host" in section:
+        kwargs["chromecast_host"] = section["chromecast_host"]
     if "data_dir" in section:
         kwargs["data_dir"] = Path(section["data_dir"])
     if "max_width" in section:
@@ -91,6 +105,13 @@ def load_config(path: "Path | str | None" = None) -> Config:
         kwargs["reshuffle_on_wrap"] = section["reshuffle_on_wrap"]
     if "cast_confirm_timeout_seconds" in section:
         kwargs["cast_confirm_timeout_seconds"] = section["cast_confirm_timeout_seconds"]
+    if "hidden_folder_names" in section:
+        kwargs["hidden_folder_names"] = list(section["hidden_folder_names"])
+    if "only_with_description" in section:
+        kwargs["only_with_description"] = section["only_with_description"]
+    for key in ("show_location", "show_folder_name", "show_weekday", "show_time", "show_years_ago"):
+        if key in section:
+            kwargs[key] = section[key]
 
     config = Config(**kwargs)
     config.ensure_dirs()

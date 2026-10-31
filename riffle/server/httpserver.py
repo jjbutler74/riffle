@@ -8,6 +8,7 @@ from typing import Callable
 
 from riffle.config import Config
 from riffle.imaging.cache import get_or_render
+from riffle.imaging.caption import source_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,8 @@ class PhotoRequestHandler(BaseHTTPRequestHandler):
         conn = self.server.conn_factory()
         try:
             row = conn.execute(
-                "SELECT path, content_hash, date_display, title, description "
+                "SELECT path, root_folder, content_hash, date_display, date_epoch, "
+                "date_source, title, description, location "
                 "FROM photos WHERE id=? AND missing_at IS NULL",
                 (photo_id,),
             ).fetchone()
@@ -77,9 +79,15 @@ class PhotoRequestHandler(BaseHTTPRequestHandler):
                 photo_path=photo_path,
                 content_hash=row["content_hash"],
                 date_display=row["date_display"],
+                date_epoch=row["date_epoch"],
+                date_source=row["date_source"],
                 title=row["title"],
                 description=row["description"],
-                max_size=config.max_dimension,
+                location=row["location"],
+                source_name=source_name(
+                    photo_path, Path(row["root_folder"]), config.hidden_folder_names
+                ),
+                config=config,
             )
         except Exception:
             logger.exception("Failed to render photo id=%s path=%s", photo_id, photo_path)

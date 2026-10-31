@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from riffle.imaging.caption import SEPARATOR
+
 # Common Windows font install paths, tried in order; falls back to Pillow's
 # built-in bitmap font if none exist. Not vendoring a .ttf keeps the repo
 # free of binary assets while still rendering legibly on any Windows box.
@@ -16,6 +18,7 @@ _FONT_CANDIDATES = [
 _BAR_ALPHA = 160
 _TEXT_COLOR_PRIMARY = (255, 255, 255, 255)
 _TEXT_COLOR_SECONDARY = (225, 225, 225, 255)
+_TEXT_INDENT_CHARS = 3
 
 
 @dataclass
@@ -23,6 +26,7 @@ class OverlayText:
     date_text: str
     primary: str | None
     secondary: str | None
+    details: str | None = None  # location / whose camera, e.g. "Charlottesville, Virginia · Jason"
 
 
 def _normalize(text: str) -> str:
@@ -30,25 +34,26 @@ def _normalize(text: str) -> str:
 
 
 def resolve_overlay_text(
-    date_display: str, title: str | None, description: str | None
+    date_display: str, title: str | None, description: str | None, details: str | None = None
 ) -> OverlayText:
     """Decide what to show, per spec: date always; Title+Description shown
     together (title larger) only if both exist and differ after
     case/whitespace-insensitive comparison; otherwise show whichever single
     field exists (original text, not the normalized form); neither -> date only.
     """
+    details = details.strip() if details and details.strip() else None
     title = title.strip() if title and title.strip() else None
     description = description.strip() if description and description.strip() else None
 
     if title and description:
         if _normalize(title) == _normalize(description):
-            return OverlayText(date_text=date_display, primary=title, secondary=None)
-        return OverlayText(date_text=date_display, primary=title, secondary=description)
+            return OverlayText(date_text=date_display, primary=title, secondary=None, details=details)
+        return OverlayText(date_text=date_display, primary=title, secondary=description, details=details)
     if title:
-        return OverlayText(date_text=date_display, primary=title, secondary=None)
+        return OverlayText(date_text=date_display, primary=title, secondary=None, details=details)
     if description:
-        return OverlayText(date_text=date_display, primary=description, secondary=None)
-    return OverlayText(date_text=date_display, primary=None, secondary=None)
+        return OverlayText(date_text=date_display, primary=description, secondary=None, details=details)
+    return OverlayText(date_text=date_display, primary=None, secondary=None, details=details)
 
 
 def _clamp(value: float, low: int, high: int) -> int:
@@ -99,6 +104,26 @@ def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int, max_lines: 
     return lines
 
 
+def _wrap_segments(text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int) -> list[str]:
+    """Like _wrap_text, but for " · "-joined captions: breaks between the
+    segments so "3 years ago" never splits as "3 years" / "ago". A single
+    segment wider than the line falls back to word wrapping.
+    """
+    lines: list[str] = []
+    for segment in text.split(SEPARATOR):
+        if lines and font.getlength(lines[-1] + SEPARATOR + segment) <= max_width:
+            lines[-1] += SEPARATOR + segment
+        else:
+            lines.extend(_wrap_text(segment, font, max_width, max_lines))
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        while last and font.getlength(last + "…") > max_width:
+            last = last[:-1].rstrip()
+        lines[-1] = last + "…"
+    return lines
+
+
 def _line_height(font: ImageFont.ImageFont) -> int:
     ascent, descent = font.getmetrics()
     return ascent + descent
@@ -131,14 +156,22 @@ def composite_overlay(image: Image.Image, overlay: OverlayText) -> Image.Image:
         primary_font = _load_font(primary_size, bold=True)
         secondary_font = _load_font(secondary_size)
 
-        date_lines = _wrap_text(overlay.date_text, date_font, max_text_width, max_lines=1)
+        # TVs overscan the left edge, which clipped the start of the text.
+        text_indent = int(date_font.getlength("0" * _TEXT_INDENT_CHARS))
+        text_width = max(max_text_width - text_indent, 1)
+        date_lines = _wrap_segments(overlay.date_text, date_font, text_width, max_lines=2)
+        details_lines = (
+            _wrap_segments(overlay.details, date_font, text_width, max_lines=2)
+            if overlay.details
+            else []
+        )
         primary_lines = (
-            _wrap_text(overlay.primary, primary_font, max_text_width, max_lines=2)
+            _wrap_text(overlay.primary, primary_font, text_width, max_lines=2)
             if overlay.primary
             else []
         )
         secondary_lines = (
-            _wrap_text(overlay.secondary, secondary_font, max_text_width, max_lines=2)
+            _wrap_text(overlay.secondary, secondary_font, text_width, max_lines=2)
             if overlay.secondary
             else []
         )
@@ -146,11 +179,12 @@ def composite_overlay(image: Image.Image, overlay: OverlayText) -> Image.Image:
         line_spacing = max(int(date_size * 0.3), 2)
         block_spacing = max(int(date_size * 0.5), 4)
 
-        # Title, then description, then date -- date sits at the bottom of
-        # the stack now, so it gets the larger bottom_margin breathing room.
+        # Title, description, details, then date -- date sits at the bottom of
+        # the stack, so it gets the larger bottom_margin breathing room.
         blocks = [
             (primary_lines, primary_font, _TEXT_COLOR_PRIMARY),
             (secondary_lines, secondary_font, _TEXT_COLOR_SECONDARY),
+            (details_lines, date_font, _TEXT_COLOR_SECONDARY),
             (date_lines, date_font, _TEXT_COLOR_PRIMARY),
         ]
         active_blocks = [b for b in blocks if b[0]]
@@ -178,7 +212,7 @@ def composite_overlay(image: Image.Image, overlay: OverlayText) -> Image.Image:
         for line_idx, line in enumerate(lines):
             if line_idx > 0:
                 y += line_spacing
-            draw.text((margin, y), line, font=font, fill=color)
+            draw.text((margin + text_indent, y), line, font=font, fill=color)
             y += line_h
 
     canvas = Image.new("RGBA", base.size, (0, 0, 0, 0))

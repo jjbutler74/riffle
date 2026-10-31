@@ -82,6 +82,18 @@ def test_reconcile_adds_new_photos_only_into_unseen_remainder(conn):
     assert [r["position"] for r in all_rows] == list(range(15))
 
 
+def test_reconcile_shuffles_new_photos_among_themselves(conn):
+    # A big batch of new photos into a tiny remainder must not come out in id order.
+    _add_photo(conn, "/root/0.jpg")
+    shuffle.initialize_shuffle(conn, seed=1)
+
+    new_ids = [_add_photo(conn, f"/root/new{i}.jpg") for i in range(50)]
+    shuffle.reconcile_after_scan(conn, rng=random.Random(5))
+
+    order = [r["photo_id"] for r in conn.execute("SELECT photo_id FROM shuffle_order ORDER BY position")]
+    assert [pid for pid in order if pid in set(new_ids)] != new_ids
+
+
 def test_reconcile_removes_missing_photos_and_adjusts_cursor(conn):
     ids = [_add_photo(conn, f"/root/{i}.jpg") for i in range(10)]
     shuffle.initialize_shuffle(conn, seed=2)
@@ -142,3 +154,52 @@ def test_get_photo_at_cursor_and_status_summary(conn):
     status = shuffle.status_summary(conn)
     assert status.cursor == 1
     assert status.remaining_in_cycle == 1
+
+
+def _order(conn):
+    return [r["photo_id"] for r in conn.execute("SELECT photo_id FROM shuffle_order ORDER BY position")]
+
+
+def test_skip_to_eligible_moves_forward_and_wraps(conn):
+    for i in range(6):
+        _add_photo(conn, f"/root/{i}.jpg")
+    shuffle.initialize_shuffle(conn, seed=4)
+    order = _order(conn)
+    described = {order[1], order[4]}
+    for pid in described:
+        conn.execute("UPDATE photos SET description='hi' WHERE id=?", (pid,))
+    conn.execute("UPDATE photos SET description='   ' WHERE id=?", (order[2],))
+
+    assert shuffle.skip_to_eligible(conn, require_description=True)
+    assert db.get_state(conn, "cursor") == "1"
+    shuffle.advance_cursor(conn)
+    assert shuffle.skip_to_eligible(conn, require_description=True)
+    assert db.get_state(conn, "cursor") == "4"
+    shuffle.advance_cursor(conn)
+    assert shuffle.skip_to_eligible(conn, require_description=True)
+    assert db.get_state(conn, "cursor") == "1"  # wrapped
+
+
+def test_skip_to_eligible_false_when_none_described(conn):
+    for i in range(3):
+        _add_photo(conn, f"/root/{i}.jpg")
+    shuffle.initialize_shuffle(conn, seed=4)
+    shuffle.advance_cursor(conn)
+    assert not shuffle.skip_to_eligible(conn, require_description=True)
+    assert db.get_state(conn, "cursor") == "1"
+
+
+def test_skip_to_eligible_always_skips_delete_notes(conn):
+    for i in range(3):
+        _add_photo(conn, f"/root/{i}.jpg")
+    shuffle.initialize_shuffle(conn, seed=4)
+    order = _order(conn)
+    conn.execute("UPDATE photos SET description='Delete please' WHERE id=?", (order[0],))
+    conn.execute("UPDATE photos SET description='Lake Tekapo' WHERE id=?", (order[2],))
+
+    # Without requiring a description: skips only the delete-marked photo.
+    assert shuffle.skip_to_eligible(conn, require_description=False)
+    assert db.get_state(conn, "cursor") == "1"
+    # Requiring one: also skips the undescribed photo.
+    assert shuffle.skip_to_eligible(conn, require_description=True)
+    assert db.get_state(conn, "cursor") == "2"
