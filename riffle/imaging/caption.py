@@ -13,6 +13,12 @@ _SOURCE_FOLDER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Device words around a name: "DigitalCameraJason", "RileyActionCamera",
+# "SabrinaPhones" -> the person. Longest alternatives first.
+_DEVICE_WORDS_RE = re.compile(r"DigitalCamera|ActionCamera|Camera|Phones?", re.IGNORECASE)
+# "FromFran", "From Folks" -> who the photos came from.
+_FROM_PREFIX_RE = re.compile(r"^From(?=[A-Z\s])")
+
 SEPARATOR = " · "
 
 
@@ -29,7 +35,8 @@ def source_name(
     while True:
         match = _SOURCE_FOLDER_RE.fullmatch(folder.name)
         if match:
-            name = match.group("name").strip()
+            name = _DEVICE_WORDS_RE.sub("", match.group("name"))
+            name = _FROM_PREFIX_RE.sub("", name).strip()
             if len(name) >= 2 and name.casefold() not in hidden:
                 return name
         if folder == root_folder or folder.parent == folder:

@@ -101,3 +101,90 @@ def test_init_schema_upgrades_v1_database():
     row = conn.execute("SELECT latitude, location, meta_version FROM photos").fetchone()
     assert (row["latitude"], row["location"], row["meta_version"]) == (None, None, 1)
     assert db.get_state(conn, "schema_version") == db.SCHEMA_VERSION
+
+
+def test_source_name_strips_device_words_and_from_prefix():
+    assert source_name(ROOT / "DigitalCameraJason2015" / "a.jpg", ROOT) == "Jason"
+    assert source_name(ROOT / "RileyActionCamera2019" / "a.jpg", ROOT) == "Riley"
+    assert source_name(ROOT / "SabrinaPhones2016" / "a.jpg", ROOT) == "Sabrina"
+    assert source_name(ROOT / "FromFran2012" / "a.jpg", ROOT) == "Fran"
+    # Nothing left once the device words go: no name rather than an empty one.
+    assert source_name(ROOT / "DigitalCamera2011" / "a.jpg", ROOT) is None
+    assert source_name(ROOT / "Phones2014" / "a.jpg", ROOT) is None
+
+
+def test_unusable_exif_year_falls_back_to_mtime():
+    from riffle.scan.pipeline import _resolve_date
+
+    mtime = datetime(2009, 6, 1, 12, 0).timestamp()
+    assert _resolve_date("4501:01:01 00:00:00", mtime) == ("June 1, 2009", mtime, "mtime")
+
+
+def test_config_date_range_accepts_dates_and_years(tmp_path):
+    from riffle.config import load_config
+
+    path = tmp_path / "config.toml"
+    path.write_text(
+        f'[riffle]\nroot_folders = ["x"]\ndata_dir = "{tmp_path.as_posix()}"\n'
+        "date_from = 2015\ndate_to = 2016-06-30\n",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    assert (config.date_from, config.date_to) == (date(2015, 1, 1), date(2016, 6, 30))
+    start, end = config.date_epoch_range
+    assert start == datetime(2015, 1, 1).timestamp()
+    assert end == datetime(2016, 7, 1).timestamp()
+
+
+def test_scan_refuses_to_run_when_a_root_folder_is_missing(tmp_path):
+    import pytest
+
+    from riffle.config import Config
+    from riffle.scan.pipeline import RootFolderUnavailable, run_scan
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.init_schema(conn)
+    conn.execute(
+        "INSERT INTO photos (path, root_folder, size, mtime, content_hash, date_display, "
+        "date_epoch, date_source, first_seen_at, last_scanned_at) "
+        "VALUES ('Z:/gone/a.jpg', 'Z:/gone', 1, 0, 'h', 'd', 0, 'exif', 0, 0)"
+    )
+    config = Config(root_folders=[tmp_path, tmp_path / "not-there"], data_dir=tmp_path)
+    with pytest.raises(RootFolderUnavailable):
+        run_scan(conn, config)
+    assert conn.execute("SELECT missing_at FROM photos").fetchone()[0] is None
+
+
+def test_stored_placeholder_captions_are_cleared_and_flagged_for_reread():
+    from riffle.scan.pipeline import clear_placeholder_captions
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.init_schema(conn)
+    for i, (title, description) in enumerate(
+        [("MVI_2731", "Beach day"), (None, "NOVATEK CAMERA"), (None, "Grandma's pic"), ("Sunset", None)]
+    ):
+        conn.execute(
+            "INSERT INTO photos (path, root_folder, size, mtime, content_hash, date_display, "
+            "date_epoch, date_source, title, description, meta_version, first_seen_at, last_scanned_at) "
+            f"VALUES ('/{i}.jpg', '/', 1, 0, 'h', 'd', 0, 'exif', ?, ?, {db.METADATA_VERSION}, 0, 0)",
+            (title, description),
+        )
+    assert clear_placeholder_captions(conn, ["grandma's *"]) == 3
+    rows = conn.execute("SELECT title, description, meta_version FROM photos ORDER BY id").fetchall()
+    assert [tuple(r) for r in rows] == [
+        (None, "Beach day", 0),
+        (None, None, 0),
+        (None, None, 0),
+        ("Sunset", None, db.METADATA_VERSION),
+    ]
+
+
+def test_walk_roots_skips_listed_files(tmp_path):
+    from riffle.scan.walker import walk_roots
+
+    (tmp_path / "keep.jpg").write_bytes(b"x")
+    (tmp_path / "BAD.JPG").write_bytes(b"x")
+    found = {f.path.name for f in walk_roots([tmp_path], [tmp_path / "bad.jpg"])}
+    assert found == {"keep.jpg"}

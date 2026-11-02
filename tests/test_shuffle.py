@@ -203,3 +203,19 @@ def test_skip_to_eligible_always_skips_delete_notes(conn):
     # Requiring one: also skips the undescribed photo.
     assert shuffle.skip_to_eligible(conn, require_description=True)
     assert db.get_state(conn, "cursor") == "2"
+
+
+def test_skip_to_eligible_honors_date_range(conn):
+    for i in range(3):
+        _add_photo(conn, f"/root/{i}.jpg")
+    shuffle.initialize_shuffle(conn, seed=4)
+    order = _order(conn)
+    for pid, epoch in zip(order, (100.0, 200.0, 300.0)):
+        conn.execute("UPDATE photos SET date_epoch=? WHERE id=?", (epoch, pid))
+
+    assert shuffle.skip_to_eligible(conn, False, date_range=(150.0, None))
+    assert db.get_state(conn, "cursor") == "1"
+    shuffle.advance_cursor(conn)
+    assert shuffle.skip_to_eligible(conn, False, date_range=(150.0, 250.0))
+    assert db.get_state(conn, "cursor") == "1"  # 300 is out of range: wrapped back
+    assert not shuffle.skip_to_eligible(conn, False, date_range=(400.0, None))

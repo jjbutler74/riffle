@@ -16,12 +16,17 @@ class DiscoveredFile:
     mtime: float
 
 
-def walk_roots(root_folders: Iterable[Path]) -> Iterator[DiscoveredFile]:
+def walk_roots(
+    root_folders: Iterable[Path], skip_files: Iterable[Path] = ()
+) -> Iterator[DiscoveredFile]:
     """Recursively walk each root folder, yielding JPEG files found.
 
     Symlinked/junction directories are skipped (followlinks=False) to avoid
-    walk cycles across the ~100-200 configured roots.
+    walk cycles across the ~100-200 configured roots. Files in skip_files
+    (e.g. ones on a bad sector, where any read hangs) are never yielded;
+    compared case-insensitively, as Windows paths are.
     """
+    skip = {str(Path(p).resolve()).casefold() for p in skip_files}
     seen_paths: set[Path] = set()
     for root in root_folders:
         root = root.resolve()
@@ -34,7 +39,7 @@ def walk_roots(root_folders: Iterable[Path]) -> Iterator[DiscoveredFile]:
                     continue
                 full_path = Path(dirpath) / name
                 resolved = full_path.resolve()
-                if resolved in seen_paths:
+                if resolved in seen_paths or str(resolved).casefold() in skip:
                     continue
                 seen_paths.add(resolved)
                 try:

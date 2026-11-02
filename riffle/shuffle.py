@@ -136,33 +136,46 @@ def _reshuffle_all(conn: sqlite3.Connection, rng: random.Random) -> None:
 
 
 def skip_to_eligible(
-    conn: sqlite3.Connection, require_description: bool, reshuffle_on_wrap: bool = False
+    conn: sqlite3.Connection,
+    require_description: bool,
+    reshuffle_on_wrap: bool = False,
+    date_range: tuple[float | None, float | None] = (None, None),
 ) -> bool:
     """Move the cursor forward to the next photo worth showing, wrapping to
     the start of the order (and reshuffling, if configured) like
     advance_cursor does. Photos whose description mentions "delete" (notes
     like "delete please") are always skipped; with require_description, so
-    are photos with no description. Photos skipped over count as seen for
-    this cycle. Returns False, leaving the cursor alone, if none qualify.
+    are photos with no description; photos taken outside date_range
+    ([start, end) epoch seconds, either end None for open) are skipped too.
+    Photos skipped over count as seen for this cycle. Returns False, leaving
+    the cursor alone, if none qualify.
     """
-    has_description = "TRIM(COALESCE(p.description, '')) != ''" if require_description else "1"
+    conditions = ["COALESCE(p.description, '') NOT LIKE '%delete%'"]
+    params: list[float] = []
+    if require_description:
+        conditions.append("TRIM(COALESCE(p.description, '')) != ''")
+    start, end = date_range
+    if start is not None:
+        conditions.append("p.date_epoch >= ?")
+        params.append(start)
+    if end is not None:
+        conditions.append("p.date_epoch < ?")
+        params.append(end)
     # LIKE is case-insensitive for ASCII in SQLite, so this catches "Delete" too.
     query = f"""
         SELECT MIN(so.position) AS position
         FROM shuffle_order so
         JOIN photos p ON p.id = so.photo_id
-        WHERE so.position >= ?
-          AND {has_description}
-          AND COALESCE(p.description, '') NOT LIKE '%delete%'
+        WHERE so.position >= ? AND {" AND ".join(conditions)}
     """
     cursor = int(get_state(conn, "cursor", "0"))
-    position = conn.execute(query, (cursor,)).fetchone()["position"]
+    position = conn.execute(query, (cursor, *params)).fetchone()["position"]
     if position is None:
-        if conn.execute(query, (0,)).fetchone()["position"] is None:
+        if conn.execute(query, (0, *params)).fetchone()["position"] is None:
             return False
         if reshuffle_on_wrap:
             _reshuffle_all(conn, random.Random())
-        position = conn.execute(query, (0,)).fetchone()["position"]
+        position = conn.execute(query, (0, *params)).fetchone()["position"]
     if position != cursor:
         set_state(conn, "cursor", str(position))
     conn.commit()

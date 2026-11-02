@@ -36,12 +36,16 @@ Casts a photo slideshow from local folders to a Chromecast (2nd gen).
    All settings besides `root_folders` (`exiftool_path`, `chromecast_name`,
    `interval_seconds`, `http_host`/`http_port`, `max_width`/`max_height`,
    `data_dir`, `exiftool_batch_size`, `reshuffle_on_wrap`,
-   `chromecast_host`, `hidden_folder_names`, `only_with_description`, and the
+   `chromecast_host`, `hidden_folder_names`, `only_with_description`,
+   `ignore_captions`, `skip_files`, `date_from`/`date_to`, and the
    caption toggles `show_location`, `show_folder_name`, `show_weekday`,
    `show_time`, `show_years_ago`) are optional and
    have sensible defaults — see the comments in `config.sample.toml` or
    `riffle/config.py`. Note that `only_with_description` defaults to **on**,
    so photos without a description are skipped until you turn it off.
+   Text cameras write on their own ("OLYMPUS DIGITAL CAMERA", the model
+   name, "IMG_1234", a timestamp) doesn't count as a description; add your
+   own such phrases with `ignore_captions`.
 
 4. **Windows long paths**: if any of your photo paths might exceed 260
    characters, enable `LongPathsEnabled` (Local Group Policy or the

@@ -13,7 +13,7 @@ from riffle.cast.controller import CastConnectError, CastController
 from riffle.cast.loop import run_play_loop
 from riffle.config import Config, load_config
 from riffle.logging_setup import configure_logging
-from riffle.scan.pipeline import ScanReport, run_scan
+from riffle.scan.pipeline import RootFolderUnavailable, ScanReport, run_scan
 from riffle.server.httpserver import build_server
 from riffle.sleep import allow_sleep, prevent_sleep
 
@@ -29,6 +29,8 @@ def _print_scan_report(report: ScanReport) -> None:
     print(f"Added:     {report.added}")
     print(f"Updated:   {report.updated}")
     print(f"Refreshed: {report.metadata_refreshed}")
+    if report.captions_cleared:
+        print(f"Placeholder captions cleared: {report.captions_cleared}")
     print(f"Missing:   {report.missing_marked}")
     print(f"Revived:   {report.revived}")
     print(f"Unchanged: {report.unchanged}")
@@ -52,6 +54,15 @@ def cmd_scan(args: argparse.Namespace) -> int:
                 f"Could not find the exiftool executable ({config.exiftool_path!r}).\n"
                 "Install ExifTool (https://exiftool.org) and make sure it's on your "
                 "PATH, or set exiftool_path in your config.toml to its full path.",
+                file=sys.stderr,
+            )
+            return 1
+        except RootFolderUnavailable as exc:
+            print(
+                "These photo folders aren't available (is the drive connected?):\n"
+                + "\n".join(f"  {folder}" for folder in exc.folders)
+                + "\nNothing was changed. Connect the drive and try again, or remove "
+                "the folders from root_folders in your config.",
                 file=sys.stderr,
             )
             return 1
@@ -115,7 +126,10 @@ def cmd_play(args: argparse.Namespace) -> int:
     db.init_schema(conn)
     has_photo = shuffle.get_photo_at_cursor(conn) is not None
     has_eligible = shuffle.skip_to_eligible(
-        conn, config.only_with_description, config.reshuffle_on_wrap
+        conn,
+        config.only_with_description,
+        config.reshuffle_on_wrap,
+        config.date_epoch_range,
     )
     conn.close()
     if not has_photo:

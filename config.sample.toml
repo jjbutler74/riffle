@@ -70,6 +70,14 @@ root_folders = [
 # Default: true
 # only_with_description = true
 
+# Cameras and apps often fill the title/description with text nobody typed:
+# "OLYMPUS DIGITAL CAMERA", "SONY DSC", the camera's model name, the file
+# name ("IMG_1234"), or a timestamp. Riffle already treats those as "no
+# caption". List any others your photos have here; each must match the whole
+# caption, ignoring case and extra spaces, and * matches anything. Takes
+# effect on the next `riffle rescan` -- no full re-read needed. Default: []
+# ignore_captions = ["HONOR CAMERA", "Photo by *"]
+
 # Caption extras -- each can be turned off. Title/description and the date
 # itself always show. Defaults: everything on except show_time.
 # show_location = true      # nearest town from the photo's GPS, e.g. "Kaikoura, Canterbury"
@@ -77,3 +85,13 @@ root_folders = [
 # show_weekday = true       # "Monday, February 6, 2023"
 # show_time = false         # "..., 2:10 PM"
 # show_years_ago = true     # "· 3 years ago"
+
+# Only show photos taken within this range (inclusive). Use a date
+# (2015-01-01) or just a year (2015 means Jan 1 for date_from, Dec 31 for
+# date_to). Leave either out for no limit on that side. Default: no limits.
+# date_from = 2015
+# date_to = 2020-06-30
+
+# Photo files the scan should never open, e.g. a file on a damaged part of
+# the drive where reading it hangs. Default: []
+# skip_files = ["D:/Pictures/2024/SLR2024/IMG_0380.JPG"]

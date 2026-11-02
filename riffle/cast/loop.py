@@ -30,7 +30,10 @@ def run_play_loop(
     try:
         while not stop_event.is_set():
             if not shuffle.skip_to_eligible(
-                conn, config.only_with_description, config.reshuffle_on_wrap
+                conn,
+                config.only_with_description,
+                config.reshuffle_on_wrap,
+                config.date_epoch_range,
             ):
                 logger.warning(
                     "No photos to show -- none have a description (or all are marked "
